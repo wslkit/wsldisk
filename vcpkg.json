@@ -5,7 +5,7 @@
   "description": "Compact, shrink, move, inspect and snapshot WSL2 virtual disks",
   "homepage": "https://github.com/zcsizmadia/wsldisk",
   "license": "MIT",
-  "builtin-baseline": "118bba14b94bc040c098c0c15e63c142148c05ca",
+  "builtin-baseline": "04a9d8e5212d01ee1dd9478eadd9caade4f8b0d4",
   "supports": "windows & (x64 | arm64)",
   "dependencies": [
     "cli11",
