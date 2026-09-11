@@ -21,23 +21,23 @@ Goal: de-risk the unknowns, have a compiling skeleton and CI.
 - [x] `ci.yml`: ASan job, integration job, package job (Release zips + SHA256SUMS)
 - [x] `Win32Api` fault-injection table in `platform/` so every error branch is testable
 - [x] Test skeleton: `tests/unit` (Catch2), `tests/contract` (real Win32 on temp files), `tests/integration` (gated by `WSLDISK_INTEGRATION`)
-- [x] `tests/fuzz` targets and `nightly.yml` ([#10](https://github.com/zcsizmadia/wsldisk/issues/10)) — size-string target; registry and `wsl.exe` output parsers follow their code in M1
+- [x] `tests/fuzz` targets and `nightly.yml` ([#10](https://github.com/wslkit/wsldisk/issues/10)) — size-string target; registry and `wsl.exe` output parsers follow their code in M1
 - [ ] Fakes for the remaining interfaces (`FakeRegistry`, `FakeVirtualDisk`, `FakeWslHost`, `FakeFileSystem`, `FakeClock`) — land with the interfaces in M1
-- [x] Make `clang-tidy` a blocking gate ([#8](https://github.com/zcsizmadia/wsldisk/issues/8)) — needed a pinned LLVM 20; the crash was specific to clang-tidy 18
-- [x] Verify WSL2 works on `windows-2025` hosted runners; decide hosted vs self-hosted ([#7](https://github.com/zcsizmadia/wsldisk/issues/7))
+- [x] Make `clang-tidy` a blocking gate ([#8](https://github.com/wslkit/wsldisk/issues/8)) — needed a pinned LLVM 20; the crash was specific to clang-tidy 18
+- [x] Verify WSL2 works on `windows-2025` hosted runners; decide hosted vs self-hosted ([#7](https://github.com/wslkit/wsldisk/issues/7))
 - [x] `codeql.yml`, `dependabot.yml` (actions), `vcpkg-baseline.yml`, `labeler.yml`, `stale.yml`
 - [x] Composite actions: `setup-toolchain`, `wsl-fixture` (SHA-pinned Alpine 3.22.4 rootfs), `wsl-cleanup`
-- [~] Branch protection on `main` — [not wanted at this stage](https://github.com/zcsizmadia/wsldisk/issues/9); CI being green gates a merge by convention. Revisit before 1.0
+- [~] Branch protection on `main` — [not wanted at this stage](https://github.com/wslkit/wsldisk/issues/9); CI being green gates a merge by convention. Revisit before 1.0
 - [x] Issue/PR templates, CODEOWNERS, `SECURITY.md`
 
 **Technical spikes** (throwaway code under `spikes/`, results recorded in `docs/RESEARCH.md`)
 
-- [x] `CompactVirtualDisk` unattached vs attached-RO: measure reclaimed bytes after `fstrim` ([#1](https://github.com/zcsizmadia/wsldisk/issues/1))
-- [x] Confirm `ResizeVirtualDisk` shrink path + `resize2fs` via `wsl --mount --vhd --bare` ([#2](https://github.com/zcsizmadia/wsldisk/issues/2))
-- [x] Guest commands as uid 0; `wslapi.dll` found unusable unpackaged ([#3](https://github.com/zcsizmadia/wsldisk/issues/3))
-- [x] Registry layout across WSL inbox 1.x / Store 2.x ([#4](https://github.com/zcsizmadia/wsldisk/issues/4))
-- [x] Docker Desktop VHDX lock behaviour when Docker is "stopped" vs quit ([#5](https://github.com/zcsizmadia/wsldisk/issues/5))
-- [~] Elevation relaunch + named-pipe result streaming — [moved to M2](https://github.com/zcsizmadia/wsldisk/issues/6). Compaction turned out to need no elevation at all (D10), so this belongs with the attach-read-only and resize work that does
+- [x] `CompactVirtualDisk` unattached vs attached-RO: measure reclaimed bytes after `fstrim` ([#1](https://github.com/wslkit/wsldisk/issues/1))
+- [x] Confirm `ResizeVirtualDisk` shrink path + `resize2fs` via `wsl --mount --vhd --bare` ([#2](https://github.com/wslkit/wsldisk/issues/2))
+- [x] Guest commands as uid 0; `wslapi.dll` found unusable unpackaged ([#3](https://github.com/wslkit/wsldisk/issues/3))
+- [x] Registry layout across WSL inbox 1.x / Store 2.x ([#4](https://github.com/wslkit/wsldisk/issues/4))
+- [x] Docker Desktop VHDX lock behaviour when Docker is "stopped" vs quit ([#5](https://github.com/wslkit/wsldisk/issues/5))
+- [~] Elevation relaunch + named-pipe result streaming — [moved to M2](https://github.com/wslkit/wsldisk/issues/6). Compaction turned out to need no elevation at all (D10), so this belongs with the attach-read-only and resize work that does
 
 **Exit criteria: met.** CI is green across 16 required checks with the 100% coverage gate passing and no exclusions; every spike is answered in [docs/RESEARCH.md](docs/RESEARCH.md); PLAN.md §8 now separates what was measured from what is still open.
 
@@ -56,47 +56,47 @@ M0 it has to encode, so they are not rediscovered.
 
 **Phase 1 — platform foundations** (all four in parallel; no dependencies)
 
-- [x] `IRegistry`, `Win32Registry`, `FakeRegistry` with canned hives for every layout spike #4 found ([#20](https://github.com/zcsizmadia/wsldisk/issues/20))
-- [x] `IVirtualDisk`, `Win32VirtualDisk`, `FakeVirtualDisk` — V2 open parameters + `ACCESS_NONE` only, with a contract test pinning that `METAOPS` fails ([#21](https://github.com/zcsizmadia/wsldisk/issues/21))
-- [x] `IWslHost`, `WslExeHost`, `FakeWslHost` — `wsl.exe` only, `wslapi.dll` is gone; absolute paths, UTF-16 decode, stderr noise; fuzz target for the `--list` decoder ([#22](https://github.com/zcsizmadia/wsldisk/issues/22))
-- [x] `IFileSystem` extensions (directory scan, allocated ranges, delete) and `IClock`/`FakeClock` ([#23](https://github.com/zcsizmadia/wsldisk/issues/23))
+- [x] `IRegistry`, `Win32Registry`, `FakeRegistry` with canned hives for every layout spike #4 found ([#20](https://github.com/wslkit/wsldisk/issues/20))
+- [x] `IVirtualDisk`, `Win32VirtualDisk`, `FakeVirtualDisk` — V2 open parameters + `ACCESS_NONE` only, with a contract test pinning that `METAOPS` fails ([#21](https://github.com/wslkit/wsldisk/issues/21))
+- [x] `IWslHost`, `WslExeHost`, `FakeWslHost` — `wsl.exe` only, `wslapi.dll` is gone; absolute paths, UTF-16 decode, stderr noise; fuzz target for the `--list` decoder ([#22](https://github.com/wslkit/wsldisk/issues/22))
+- [x] `IFileSystem` extensions (directory scan, allocated ranges, delete) and `IClock`/`FakeClock` ([#23](https://github.com/wslkit/wsldisk/issues/23))
 
 **Phase 2 — model** (needs Phase 1)
 
-- [x] `Distro` model and registry enumeration — prefix forms preserved, `VhdFileName` optional, WSL1 enumerated but refused elsewhere; fuzz target for the value parser ([#24](https://github.com/zcsizmadia/wsldisk/issues/24))
-- [x] Size probes — virtual, on-disk, allocated, guest `df` only when running or `--probe`; unknown is a value, not a failure ([#25](https://github.com/zcsizmadia/wsldisk/issues/25))
+- [x] `Distro` model and registry enumeration — prefix forms preserved, `VhdFileName` optional, WSL1 enumerated but refused elsewhere; fuzz target for the value parser ([#24](https://github.com/wslkit/wsldisk/issues/24))
+- [x] Size probes — virtual, on-disk, allocated, guest `df` only when running or `--probe`; unknown is a value, not a failure ([#25](https://github.com/wslkit/wsldisk/issues/25))
 
 **Phase 3 — operation framework** (needs `IClock`; parallel with Phase 2)
 
-- [x] `Plan → Execute → Verify`, LIFO undo, `ProgressSink`, `OperationRunner` with automatic rollback ([#26](https://github.com/zcsizmadia/wsldisk/issues/26))
+- [x] `Plan → Execute → Verify`, LIFO undo, `ProgressSink`, `OperationRunner` with automatic rollback ([#26](https://github.com/wslkit/wsldisk/issues/26))
 
 **Phase 4 — read-only commands** (needs Phases 2 and 3)
 
-- [x] CLI plumbing — `--json`, `-v`/`--log`, `--yes`, `--dry-run`, exit codes, table and JSON renderers, golden tests, shared WSL1 refusal ([#27](https://github.com/zcsizmadia/wsldisk/issues/27))
-- [x] `wsldisk list` ([#28](https://github.com/zcsizmadia/wsldisk/issues/28))
-- [x] `wsldisk info <distro>` ([#29](https://github.com/zcsizmadia/wsldisk/issues/29))
-- [x] `wsldisk orphans` with both scan layouts, `--delete`, `--relink` — the first mutating command, exercises rollback ([#30](https://github.com/zcsizmadia/wsldisk/issues/30))
+- [x] CLI plumbing — `--json`, `-v`/`--log`, `--yes`, `--dry-run`, exit codes, table and JSON renderers, golden tests, shared WSL1 refusal ([#27](https://github.com/wslkit/wsldisk/issues/27))
+- [x] `wsldisk list` ([#28](https://github.com/wslkit/wsldisk/issues/28))
+- [x] `wsldisk info <distro>` ([#29](https://github.com/wslkit/wsldisk/issues/29))
+- [x] `wsldisk orphans` with both scan layouts, `--delete`, `--relink` — the first mutating command, exercises rollback ([#30](https://github.com/wslkit/wsldisk/issues/30))
 
 **Phase 5 — mutating commands** (needs Phase 4)
 
-- [x] `wsldisk trim <distro>` — `fstrim /`, never `-av`; honest about what "bytes trimmed" means ([#31](https://github.com/zcsizmadia/wsldisk/issues/31))
-- [x] `CompactOperation` and `wsldisk compact` — D9 refuse-and-name with `--shutdown`, D10 unelevated path, `--all`/`--file`/`--dry-run`/`--no-trim`/`--restart`; the milestone's acceptance test ([#32](https://github.com/zcsizmadia/wsldisk/issues/32))
-- [~] Attached-RO "full" compaction and `--elevate` — moved to M2 with the elevation IPC ([#6](https://github.com/zcsizmadia/wsldisk/issues/6))
+- [x] `wsldisk trim <distro>` — `fstrim /`, never `-av`; honest about what "bytes trimmed" means ([#31](https://github.com/wslkit/wsldisk/issues/31))
+- [x] `CompactOperation` and `wsldisk compact` — D9 refuse-and-name with `--shutdown`, D10 unelevated path, `--all`/`--file`/`--dry-run`/`--no-trim`/`--restart`; the milestone's acceptance test ([#32](https://github.com/wslkit/wsldisk/issues/32))
+- [~] Attached-RO "full" compaction and `--elevate` — moved to M2 with the elevation IPC ([#6](https://github.com/wslkit/wsldisk/issues/6))
 
 **Phase 6 — configuration** (needs Phase 4; parallel with Phase 5)
 
-- [x] `config.toml` and `wsldisk config get|set|edit|path`; read-only `.wslconfig` display; fuzz target for the parser ([#33](https://github.com/zcsizmadia/wsldisk/issues/33))
-- [x] `wsldisk completion powershell|bash|zsh`, generated from the CLI11 tree ([#34](https://github.com/zcsizmadia/wsldisk/issues/34))
+- [x] `config.toml` and `wsldisk config get|set|edit|path`; read-only `.wslconfig` display; fuzz target for the parser ([#33](https://github.com/wslkit/wsldisk/issues/33))
+- [x] `wsldisk completion powershell|bash|zsh`, generated from the CLI11 tree ([#34](https://github.com/wslkit/wsldisk/issues/34))
 
 **Phase 7 — integration harness** (needs `IWslHost`; unblocks every command's integration tests, so it starts early)
 
-- [x] `ScratchDistro` RAII fixture, junk/hash helpers, second-distro helper for D9, the `wsl.exe` traps encoded ([#35](https://github.com/zcsizmadia/wsldisk/issues/35))
+- [x] `ScratchDistro` RAII fixture, junk/hash helpers, second-distro helper for D9, the `wsl.exe` traps encoded ([#35](https://github.com/wslkit/wsldisk/issues/35))
 
 **Phase 8 — release** (docs need every command; `release.yml` can start any time)
 
-- [x] README usage, `docs/COMPACT.md`, `docs/JSON.md`, real `docs/ARCHITECTURE.md` layout ([#36](https://github.com/zcsizmadia/wsldisk/issues/36))
-- [x] `release.yml`: tag → full matrix → SBOM → attestations → GitHub Release → post-install smoke ([#37](https://github.com/zcsizmadia/wsldisk/issues/37))
-- [ ] winget + scoop manifests — may slip to M2 if the winget review is slow ([#38](https://github.com/zcsizmadia/wsldisk/issues/38))
+- [x] README usage, `docs/COMPACT.md`, `docs/JSON.md`, real `docs/ARCHITECTURE.md` layout ([#36](https://github.com/wslkit/wsldisk/issues/36))
+- [x] `release.yml`: tag → full matrix → SBOM → attestations → GitHub Release → post-install smoke ([#37](https://github.com/wslkit/wsldisk/issues/37))
+- [ ] winget + scoop manifests — may slip to M2 if the winget review is slow ([#38](https://github.com/wslkit/wsldisk/issues/38))
 
 Already done in M0 and carried forward: `nightly.yml` with fuzzing and the
 integration suite; the size-string fuzz target.
@@ -128,15 +128,15 @@ owner, not something CI should do on its own.
 
 ## M2 — `move`, `relink`, `grow`, `shrink`, `usage`, `clean`, `verify` (v0.2.0, ≈ 5 weeks)
 
-- [x] `MoveOperation`: preflight (fs type, free space, running), sparse-preserving copy with progress, registry repoint, start test, rollback, source cleanup; same-volume fast path ([#106](https://github.com/zcsizmadia/wsldisk/issues/106)). `--verify` full-hash comparison is still to come
-- [x] `wsldisk relink <distro> <path>` — the operation existed behind `orphans --relink`; promoted to a command of its own, and taught to honour `--json` ([#63](https://github.com/zcsizmadia/wsldisk/issues/63))
+- [x] `MoveOperation`: preflight (fs type, free space, running), sparse-preserving copy with progress, registry repoint, start test, rollback, source cleanup; same-volume fast path ([#106](https://github.com/wslkit/wsldisk/issues/106)). `--verify` full-hash comparison is still to come
+- [x] `wsldisk relink <distro> <path>` — the operation existed behind `orphans --relink`; promoted to a command of its own, and taught to honour `--json` ([#63](https://github.com/wslkit/wsldisk/issues/63))
 - [ ] `GrowOperation`: `ResizeVirtualDisk` + `resize2fs`; detect partitioned disks and refuse
 - [ ] Helper-distro mechanism (tiny Alpine rootfs, on-demand import/remove) or `--via <distro>`
 - [ ] `ShrinkOperation`: fit check with margin, `e2fsck -f`, `resize2fs <size>`, `ResizeVirtualDisk` (safe flag only), compact, `e2fsck -n` verify
 - [ ] `wsldisk mount` / `unmount` wrappers (read-only default)
 - [ ] `wsldisk verify <distro>` (VHDX metadata + `e2fsck -n`, exit 6 on errors)
-- [x] `wsldisk usage <distro>` with curated cache catalogue (`data/caches.toml`) ([#109](https://github.com/zcsizmadia/wsldisk/issues/109))
-- [x] `wsldisk usage <distro> --by-directory` ([#69](https://github.com/zcsizmadia/wsldisk/issues/69))
+- [x] `wsldisk usage <distro>` with curated cache catalogue (`data/caches.toml`) ([#109](https://github.com/wslkit/wsldisk/issues/109))
+- [x] `wsldisk usage <distro> --by-directory` ([#69](https://github.com/wslkit/wsldisk/issues/69))
 - [ ] `wsldisk clean <distro>` per-category flags, `--dry-run`, `--compact` chaining; never outside catalogue paths
 - [ ] `wsldisk default-user <distro> [name|uid]`
 - [ ] `wsldisk set-sparse <distro> on|off` with caveat gate and post-off compact

@@ -12,7 +12,7 @@ release and the one before it are supported.
 ## Reporting a vulnerability
 
 Report privately through GitHub's
-[security advisory form](https://github.com/zcsizmadia/wsldisk/security/advisories/new).
+[security advisory form](https://github.com/wslkit/wsldisk/security/advisories/new).
 Please do not open a public issue for anything exploitable.
 
 Include, if you can:

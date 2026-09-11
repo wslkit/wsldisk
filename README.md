@@ -2,8 +2,8 @@
 
 > Compact, shrink, move, inspect and snapshot WSL2 virtual disks — from one native, dependency-free Windows CLI.
 
-[![ci](https://github.com/zcsizmadia/wsldisk/actions/workflows/ci.yml/badge.svg)](https://github.com/zcsizmadia/wsldisk/actions/workflows/ci.yml)
-[![codeql](https://github.com/zcsizmadia/wsldisk/actions/workflows/codeql.yml/badge.svg)](https://github.com/zcsizmadia/wsldisk/actions/workflows/codeql.yml)
+[![ci](https://github.com/wslkit/wsldisk/actions/workflows/ci.yml/badge.svg)](https://github.com/wslkit/wsldisk/actions/workflows/ci.yml)
+[![codeql](https://github.com/wslkit/wsldisk/actions/workflows/codeql.yml/badge.svg)](https://github.com/wslkit/wsldisk/actions/workflows/codeql.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **Status:** alpha. `list`, `info`, `compact`, `trim`, `orphans`, `config` and
@@ -274,7 +274,7 @@ Hyper-V to compact a VHDX" folklore is simply wrong.
 Two honest notes. wsldisk has no release yet — if you need to shrink a disk this
 afternoon, wslcompact is the tool that exists. And a rebuild reclaims space that
 in-place compaction cannot, which is why
-[whether to add one](https://github.com/zcsizmadia/wsldisk/issues/67) is an open
+[whether to add one](https://github.com/wslkit/wsldisk/issues/67) is an open
 question here rather than a settled no.
 
 ## Design principles
@@ -297,7 +297,7 @@ C++23, CMake + Ninja + vcpkg, [CLI11](https://github.com/CLIUtils/CLI11), [nlohm
 git clone https://github.com/microsoft/vcpkg C:\src\vcpkg   # full clone, not --depth 1
 C:\src\vcpkg\bootstrap-vcpkg.bat
 
-git clone https://github.com/zcsizmadia/wsldisk
+git clone https://github.com/wslkit/wsldisk
 cd wsldisk
 . .\scripts\dev-shell.ps1
 cmake --preset x64-debug

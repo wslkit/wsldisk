@@ -40,5 +40,5 @@ scoop update wsldisk   # in a bucket
 
 Two routes, in increasing order of effort:
 
-1. **A bucket in this repository.** `scoop bucket add wsldisk https://github.com/zcsizmadia/wsldisk` works if the manifest sits in a `bucket/` directory at the root. That is a decision about repository layout, so it is not done here.
+1. **A bucket in this repository.** `scoop bucket add wsldisk https://github.com/wslkit/wsldisk` works if the manifest sits in a `bucket/` directory at the root. That is a decision about repository layout, so it is not done here.
 2. **ScoopInstaller/Extras.** The usual home for a tool like this. It wants a manifest that already works, a release history, and `checkver`/`autoupdate` that their bot can run — which is why those blocks are written now rather than later.

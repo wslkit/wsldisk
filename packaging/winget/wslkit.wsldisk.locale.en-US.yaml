@@ -1,16 +1,20 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
-PackageIdentifier: zcsizmadia.wsldisk
+PackageIdentifier: wslkit.wsldisk
 PackageVersion: __VERSION__
 PackageLocale: en-US
 
-Publisher: Zoltan Csizmadia
-PublisherUrl: https://github.com/zcsizmadia
-PublisherSupportUrl: https://github.com/zcsizmadia/wsldisk/issues
+Publisher: wslkit
+PublisherUrl: https://github.com/wslkit
+PublisherSupportUrl: https://github.com/wslkit/wsldisk/issues
+# Publisher is the org the package ships from -- winget expects the
+# PackageIdentifier's first segment to name it. Author keeps the person, who is
+# also who Copyright below names.
+Author: Zoltan Csizmadia
 
 PackageName: wsldisk
-PackageUrl: https://github.com/zcsizmadia/wsldisk
+PackageUrl: https://github.com/wslkit/wsldisk
 License: MIT
-LicenseUrl: https://github.com/zcsizmadia/wsldisk/blob/main/LICENSE
+LicenseUrl: https://github.com/wslkit/wsldisk/blob/main/LICENSE
 Copyright: Copyright (c) Zoltan Csizmadia
 
 ShortDescription: Compact, shrink, move, inspect and snapshot WSL2 virtual disks
@@ -42,12 +46,12 @@ Tags:
   - cleanup
   - devops
 
-ReleaseNotesUrl: https://github.com/zcsizmadia/wsldisk/releases/tag/v__VERSION__
+ReleaseNotesUrl: https://github.com/wslkit/wsldisk/releases/tag/v__VERSION__
 Documentations:
   - DocumentLabel: Compaction
-    DocumentUrl: https://github.com/zcsizmadia/wsldisk/blob/main/docs/COMPACT.md
+    DocumentUrl: https://github.com/wslkit/wsldisk/blob/main/docs/COMPACT.md
   - DocumentLabel: JSON output
-    DocumentUrl: https://github.com/zcsizmadia/wsldisk/blob/main/docs/JSON.md
+    DocumentUrl: https://github.com/wslkit/wsldisk/blob/main/docs/JSON.md
 
 ManifestType: defaultLocale
 ManifestVersion: 1.6.0

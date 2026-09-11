@@ -435,7 +435,7 @@ jobs:
           fi
 
           echo "--- winget installer manifest ---"
-          cat manifests/winget/zcsizmadia.wsldisk.installer.yaml
+          cat manifests/winget/wslkit.wsldisk.installer.yaml
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
@@ -571,6 +571,6 @@ jobs:
           }
 
           wingetcreate submit --token $env:WINGET_TOKEN `
-              --prtitle "New version: zcsizmadia.wsldisk version $($env:TAG.TrimStart('v'))" `
+              --prtitle "New version: wslkit.wsldisk version $($env:TAG.TrimStart('v'))" `
               manifests/winget
           if ($LASTEXITCODE -ne 0) { throw "wingetcreate submit exited with $LASTEXITCODE" }
