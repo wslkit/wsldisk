@@ -286,7 +286,7 @@ Full design in [docs/CI.md](docs/CI.md): `ci.yml` (lint, MSVC+clang-cl × x64+ar
 ### 5.6 Distribution
 
 - GitHub Releases: `wsldisk-<ver>-x64.zip`, `-arm64.zip`, `.msix`? (no — keep plain exe + optional MSI later). Signed with Sigstore/cosign attestations; Authenticode signing if a certificate becomes available (SmartScreen).
-- winget manifest (`zcsizmadia.wsldisk`), scoop bucket entry, Chocolatey optional.
+- winget manifest (`wslkit.wsldisk`), scoop bucket entry, Chocolatey optional.
 - SBOM via vcpkg export; Dependabot for vcpkg baseline.
 
 ## 6. Risks & mitigations
@@ -322,7 +322,7 @@ Full design in [docs/CI.md](docs/CI.md): `ci.yml` (lint, MSVC+clang-cl × x64+ar
 
 Still open:
 
-- Which `Flags` bit marks sparse mode — no distribution on the test machine had it set, so `list` reads sparseness from the file attributes instead. ([#4](https://github.com/zcsizmadia/wsldisk/issues/4))
+- Which `Flags` bit marks sparse mode — no distribution on the test machine had it set, so `list` reads sparseness from the file attributes instead. ([#4](https://github.com/wslkit/wsldisk/issues/4))
 - Name collision check: `wsldisk` on winget/scoop/crates — confirm free before first release.
 
 Answered in M0, measurements in [docs/RESEARCH.md](docs/RESEARCH.md):

@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
-PackageIdentifier: zcsizmadia.wsldisk
+PackageIdentifier: wslkit.wsldisk
 PackageVersion: __VERSION__
 
 # A single static executable with nothing to install: no registry keys, no
@@ -24,10 +24,10 @@ UpgradeBehavior: install
 
 Installers:
   - Architecture: x64
-    InstallerUrl: https://github.com/zcsizmadia/wsldisk/releases/download/v__VERSION__/wsldisk-v__VERSION__-x64.zip
+    InstallerUrl: https://github.com/wslkit/wsldisk/releases/download/v__VERSION__/wsldisk-v__VERSION__-x64.zip
     InstallerSha256: __SHA256_X64__
   - Architecture: arm64
-    InstallerUrl: https://github.com/zcsizmadia/wsldisk/releases/download/v__VERSION__/wsldisk-v__VERSION__-arm64.zip
+    InstallerUrl: https://github.com/wslkit/wsldisk/releases/download/v__VERSION__/wsldisk-v__VERSION__-arm64.zip
     InstallerSha256: __SHA256_ARM64__
 
 ManifestType: installer

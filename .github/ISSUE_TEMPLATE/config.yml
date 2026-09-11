@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Question or idea
-    url: https://github.com/zcsizmadia/wsldisk/discussions
+    url: https://github.com/wslkit/wsldisk/discussions
     about: Ask how something works, or float a feature before filing it.
   - name: Security vulnerability
-    url: https://github.com/zcsizmadia/wsldisk/security/advisories/new
+    url: https://github.com/wslkit/wsldisk/security/advisories/new
     about: Report privately. Never open a public issue for something exploitable.

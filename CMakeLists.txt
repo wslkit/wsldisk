@@ -10,7 +10,7 @@ endif()
 project(wsldisk
     VERSION 0.1.0
     DESCRIPTION "Compact, shrink, move, inspect and snapshot WSL2 virtual disks"
-    HOMEPAGE_URL "https://github.com/zcsizmadia/wsldisk"
+    HOMEPAGE_URL "https://github.com/wslkit/wsldisk"
     LANGUAGES CXX)
 
 if(NOT WIN32)

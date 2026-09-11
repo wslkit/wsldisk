@@ -1,7 +1,7 @@
 {
     "version": "0.0.0",
     "description": "Compact, shrink, move, inspect and snapshot WSL2 virtual disks",
-    "homepage": "https://github.com/zcsizmadia/wsldisk",
+    "homepage": "https://github.com/wslkit/wsldisk",
     "license": "MIT",
     "notes": [
         "wsldisk needs WSL2. Run `wsldisk list` to see where your disk space went,",
@@ -9,29 +9,29 @@
         "and no Hyper-V module required.",
         "",
         "The binaries are not Authenticode-signed yet, so SmartScreen may warn on",
-        "first run. See https://github.com/zcsizmadia/wsldisk/blob/main/docs/CI.md"
+        "first run. See https://github.com/wslkit/wsldisk/blob/main/docs/CI.md"
     ],
     "architecture": {
         "64bit": {
-            "url": "https://github.com/zcsizmadia/wsldisk/releases/download/v0.0.0/wsldisk-v0.0.0-x64.zip",
+            "url": "https://github.com/wslkit/wsldisk/releases/download/v0.0.0/wsldisk-v0.0.0-x64.zip",
             "hash": "0000000000000000000000000000000000000000000000000000000000000000"
         },
         "arm64": {
-            "url": "https://github.com/zcsizmadia/wsldisk/releases/download/v0.0.0/wsldisk-v0.0.0-arm64.zip",
+            "url": "https://github.com/wslkit/wsldisk/releases/download/v0.0.0/wsldisk-v0.0.0-arm64.zip",
             "hash": "0000000000000000000000000000000000000000000000000000000000000000"
         }
     },
     "bin": "wsldisk.exe",
     "checkver": {
-        "github": "https://github.com/zcsizmadia/wsldisk"
+        "github": "https://github.com/wslkit/wsldisk"
     },
     "autoupdate": {
         "architecture": {
             "64bit": {
-                "url": "https://github.com/zcsizmadia/wsldisk/releases/download/v$version/wsldisk-v$version-x64.zip"
+                "url": "https://github.com/wslkit/wsldisk/releases/download/v$version/wsldisk-v$version-x64.zip"
             },
             "arm64": {
-                "url": "https://github.com/zcsizmadia/wsldisk/releases/download/v$version/wsldisk-v$version-arm64.zip"
+                "url": "https://github.com/wslkit/wsldisk/releases/download/v$version/wsldisk-v$version-arm64.zip"
             }
         },
         "hash": {
