@@ -38,7 +38,10 @@ function Resolve-VsInstallPath {
     if (-not (Test-Path $vswhere)) {
         throw "vswhere.exe not found; install Visual Studio 2022 17.10+ with the C++ workload."
     }
-    $path = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+    # -prerelease so an Insiders/Preview install counts: it is a normal C++
+    # toolset, but vswhere hides prerelease channels unless asked for them, and
+    # without this the script refuses on a machine that can build perfectly well.
+    $path = & $vswhere -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
     if (-not $path) {
         throw "No Visual Studio installation with the C++ toolset was found."
     }
