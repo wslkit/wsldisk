@@ -3,6 +3,10 @@
 #include <windows.h>
 #include <virtdisk.h>
 
+#include <bcrypt.h>
+#include <sddl.h>
+#include <shellapi.h>
+
 #include <functional>
 
 namespace wsldisk::platform {
@@ -81,6 +85,14 @@ struct Win32Api {
         compact_virtual_disk;
     std::function<DWORD(HANDLE handle, LPOVERLAPPED overlapped, PVIRTUAL_DISK_PROGRESS progress)>
         get_virtual_disk_operation_progress;
+    // Attach and detach. Only the elevated worker calls these: attaching needs
+    // an administrator token, which the ordinary compaction path does not (D10).
+    std::function<DWORD(HANDLE handle, PSECURITY_DESCRIPTOR security_descriptor,
+                        ATTACH_VIRTUAL_DISK_FLAG flags, ULONG provider_flags,
+                        PATTACH_VIRTUAL_DISK_PARAMETERS parameters, LPOVERLAPPED overlapped)>
+        attach_virtual_disk;
+    std::function<DWORD(HANDLE handle, DETACH_VIRTUAL_DISK_FLAG flags, ULONG provider_flags)>
+        detach_virtual_disk;
     std::function<DWORD(PVIRTUAL_STORAGE_TYPE storage_type, PCWSTR path, VIRTUAL_DISK_ACCESS_MASK access_mask,
                         PSECURITY_DESCRIPTOR security_descriptor, CREATE_VIRTUAL_DISK_FLAG flags,
                         ULONG provider_flags, PCREATE_VIRTUAL_DISK_PARAMETERS parameters,
@@ -119,6 +131,34 @@ struct Win32Api {
         create_event;
     std::function<DWORD(HANDLE handle, DWORD milliseconds)> wait_for_single_object;
     std::function<BOOL(HANDLE handle, LPOVERLAPPED overlapped)> cancel_io_ex;
+    std::function<BOOL(HANDLE handle)> set_event;
+    std::function<DWORD(HANDLE process)> get_process_id;
+
+    // Elevation: asking whether we hold an administrator token, and borrowing
+    // one for a single verb. Only the `--elevate` path uses these.
+    std::function<BOOL(PSID_IDENTIFIER_AUTHORITY authority, BYTE sub_authority_count, DWORD sub_authority0,
+                       DWORD sub_authority1, DWORD sub_authority2, DWORD sub_authority3,
+                       DWORD sub_authority4, DWORD sub_authority5, DWORD sub_authority6,
+                       DWORD sub_authority7, PSID* sid)>
+        allocate_and_initialize_sid;
+    std::function<PVOID(PSID sid)> free_sid;
+    std::function<BOOL(HANDLE token, PSID group, PBOOL is_member)> check_token_membership;
+    std::function<BOOL(LPSHELLEXECUTEINFOW info)> shell_execute_ex;
+
+    // The result channel: a one-way pipe the worker writes and the parent reads.
+    // Not duplex -- I/O on a synchronous handle is serialized, so a pending read
+    // would block the write the other direction needs (docs/RESEARCH.md).
+    std::function<HANDLE(LPCWSTR name, DWORD open_mode, DWORD pipe_mode, DWORD max_instances,
+                         DWORD out_buffer_size, DWORD in_buffer_size, DWORD default_timeout,
+                         LPSECURITY_ATTRIBUTES security_attributes)>
+        create_named_pipe;
+    std::function<BOOL(HANDLE pipe, LPOVERLAPPED overlapped)> connect_named_pipe;
+    std::function<BOOL(HANDLE pipe, PULONG process_id)> get_named_pipe_client_process_id;
+    std::function<BOOL(LPCWSTR string_security_descriptor, DWORD revision,
+                       PSECURITY_DESCRIPTOR* security_descriptor, PULONG size)>
+        convert_string_sd_to_sd;
+    std::function<HLOCAL(HLOCAL memory)> local_free;
+    std::function<NTSTATUS(PVOID algorithm, PUCHAR buffer, ULONG size, ULONG flags)> bcrypt_gen_random;
 };
 
 /// The table that forwards to the real Win32 entry points.

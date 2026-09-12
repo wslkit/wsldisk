@@ -45,7 +45,6 @@ public:
 
 private:
     /// Stops a started compaction before its OVERLAPPED leaves the stack.
-    void abandon(OVERLAPPED& overlapped, HANDLE event) const;
 
     ScopedHandle handle_;
     std::filesystem::path path_;
@@ -110,22 +109,25 @@ constexpr int cancel_poll_attempts = 100;
 /// the acknowledgement. The wait is bounded -- a compaction that will not stop is
 /// still better reported than waited on forever -- and a timeout is the one case
 /// where returning is worse than not, so it is reported rather than swallowed.
-void Win32VirtualDiskHandle::abandon(OVERLAPPED& overlapped, HANDLE event) const {
-    std::ignore = win32().cancel_io_ex(handle_.get(), &overlapped);
+void abandon(HANDLE disk, OVERLAPPED& overlapped, HANDLE event) {
+    std::ignore = win32().cancel_io_ex(disk, &overlapped);
 
     VIRTUAL_DISK_PROGRESS raw{};
     for (int attempt = 0; attempt < cancel_poll_attempts; ++attempt) {
         if (win32().wait_for_single_object(event, cancel_poll_interval_ms) == WAIT_OBJECT_0) {
             return;
         }
-        const DWORD polled = win32().get_virtual_disk_operation_progress(handle_.get(), &overlapped, &raw);
+        const DWORD polled = win32().get_virtual_disk_operation_progress(disk, &overlapped, &raw);
         if (polled != ERROR_SUCCESS || raw.OperationStatus != ERROR_IO_PENDING) {
             return;
         }
     }
 }
 
-Status Win32VirtualDiskHandle::compact(const ProgressCallback& progress) {
+/// The compaction loop itself, shared by the plain and the attached handle.
+/// Attaching read-only is what makes this a "full" compaction; the call and its
+/// cancellation rules are identical either way.
+Status run_compaction(HANDLE disk, const std::filesystem::path& path, const ProgressCallback& progress) {
     // An event is needed for the asynchronous form: CompactVirtualDisk returns
     // ERROR_IO_PENDING and the operation runs until the event signals.
     const ScopedHandle event{win32().create_event(nullptr, TRUE, FALSE, nullptr)};
@@ -140,9 +142,9 @@ Status Win32VirtualDiskHandle::compact(const ProgressCallback& progress) {
     parameters.Version = COMPACT_VIRTUAL_DISK_VERSION_1;
 
     const DWORD started =
-        win32().compact_virtual_disk(handle_.get(), COMPACT_VIRTUAL_DISK_FLAG_NONE, &parameters, &overlapped);
+        win32().compact_virtual_disk(disk, COMPACT_VIRTUAL_DISK_FLAG_NONE, &parameters, &overlapped);
     if (started != ERROR_SUCCESS && started != ERROR_IO_PENDING) {
-        return std::unexpected(error_from_win32(started, std::format("compact {}", path_.string())));
+        return std::unexpected(error_from_win32(started, std::format("compact {}", path.string())));
     }
 
     // A synchronous completion still has to report progress once, so callers see
@@ -158,17 +160,17 @@ Status Win32VirtualDiskHandle::compact(const ProgressCallback& progress) {
         const DWORD waited = win32().wait_for_single_object(event.get(), progress_poll_interval_ms);
         if (waited == WAIT_FAILED) {
             const DWORD failure = win32().get_last_error();
-            abandon(overlapped, event.get());
+            abandon(disk, overlapped, event.get());
             return std::unexpected(
-                error_from_win32(failure, std::format("wait for the compaction of {}", path_.string())));
+                error_from_win32(failure, std::format("wait for the compaction of {}", path.string())));
         }
 
         VIRTUAL_DISK_PROGRESS raw{};
-        const DWORD polled = win32().get_virtual_disk_operation_progress(handle_.get(), &overlapped, &raw);
+        const DWORD polled = win32().get_virtual_disk_operation_progress(disk, &overlapped, &raw);
         if (polled != ERROR_SUCCESS) {
-            abandon(overlapped, event.get());
+            abandon(disk, overlapped, event.get());
             return std::unexpected(
-                error_from_win32(polled, std::format("read the compaction progress of {}", path_.string())));
+                error_from_win32(polled, std::format("read the compaction progress of {}", path.string())));
         }
 
         if (raw.OperationStatus == ERROR_IO_PENDING) {
@@ -177,8 +179,8 @@ Status Win32VirtualDiskHandle::compact(const ProgressCallback& progress) {
                 // remedy claimed "the disk is still usable; re-run to finish"
                 // while a compaction was in fact still running against the file
                 // the caller may reopen immediately.
-                abandon(overlapped, event.get());
-                return fail(ErrorCode::Partial, std::format("compaction of {} was cancelled", path_.string()),
+                abandon(disk, overlapped, event.get());
+                return fail(ErrorCode::Partial, std::format("compaction of {} was cancelled", path.string()),
                             "the disk is still usable; re-run to finish reclaiming space");
             }
             continue;
@@ -186,13 +188,42 @@ Status Win32VirtualDiskHandle::compact(const ProgressCallback& progress) {
 
         if (raw.OperationStatus != ERROR_SUCCESS) {
             return std::unexpected(
-                error_from_win32(raw.OperationStatus, std::format("compact {}", path_.string())));
+                error_from_win32(raw.OperationStatus, std::format("compact {}", path.string())));
         }
 
         std::ignore = progress(DiskProgress{.current = raw.CompletionValue, .total = raw.CompletionValue});
         return {};
     }
 }
+
+Status Win32VirtualDiskHandle::compact(const ProgressCallback& progress) {
+    return run_compaction(handle_.get(), path_, progress);
+}
+
+/// A disk attached read-only, detached again by the destructor.
+///
+/// The detach is not best-effort cleanup: an attached disk that nobody detaches
+/// stays attached until the machine reboots, and the user's distribution will
+/// not start while it is. So it runs on every path out, including the ones where
+/// the compaction failed, and its own failure cannot be reported -- there is no
+/// caller left to tell.
+class Win32AttachedDisk final : public IAttachedDisk {
+public:
+    Win32AttachedDisk(HANDLE handle, std::filesystem::path path)
+        : handle_(handle), path_(std::move(path)) {}
+
+    ~Win32AttachedDisk() override {
+        std::ignore = win32().detach_virtual_disk(handle_.get(), DETACH_VIRTUAL_DISK_FLAG_NONE, 0);
+    }
+
+    [[nodiscard]] Status compact_full(const ProgressCallback& progress) override {
+        return run_compaction(handle_.get(), path_, progress);
+    }
+
+private:
+    ScopedHandle handle_;
+    std::filesystem::path path_;
+};
 
 }  // namespace
 
@@ -248,6 +279,51 @@ Status Win32VirtualDisk::create(const std::filesystem::path& path, std::uint64_t
             error_from_win32(created, std::format("create the virtual disk {}", path.string())));
     }
     return {};
+}
+
+Result<std::unique_ptr<IAttachedDisk>> Win32DiskAttach::attach_read_only(
+    const std::filesystem::path& path) const {
+    VIRTUAL_STORAGE_TYPE storage_type = vhdx_storage_type();
+
+    // Version 1 here, unlike the compaction path. Attaching needs rights, and V2
+    // accepts VIRTUAL_DISK_ACCESS_NONE and nothing else (D10) -- a mask of none
+    // is exactly what an attach cannot work with. ATTACH_RO is the narrowest
+    // mask that does: read-only, which is all a compaction needs to consult the
+    // filesystem bitmap.
+    OPEN_VIRTUAL_DISK_PARAMETERS parameters{};
+    parameters.Version = OPEN_VIRTUAL_DISK_VERSION_1;
+    parameters.Version1.RWDepth = 1;
+
+    ScopedHandle handle;
+    const DWORD opened =
+        win32().open_virtual_disk(&storage_type, path.c_str(), VIRTUAL_DISK_ACCESS_ATTACH_RO,
+                                  OPEN_VIRTUAL_DISK_FLAG_NONE, &parameters, handle.put());
+    if (opened != ERROR_SUCCESS) {
+        return std::unexpected(
+            error_from_win32(opened, std::format("open {} for attaching", path.string())));
+    }
+
+    // NO_DRIVE_LETTER and NO_LOCAL_HOST: the disk becomes compactable, not
+    // browsable. Nothing should be able to read the user's filesystem through
+    // an attachment this tool made on their behalf.
+    const DWORD attached = win32().attach_virtual_disk(
+        handle.get(), nullptr,
+        static_cast<ATTACH_VIRTUAL_DISK_FLAG>(ATTACH_VIRTUAL_DISK_FLAG_READ_ONLY |
+                                              ATTACH_VIRTUAL_DISK_FLAG_NO_DRIVE_LETTER |
+                                              ATTACH_VIRTUAL_DISK_FLAG_NO_LOCAL_HOST),
+        0, nullptr, nullptr);
+    if (attached != ERROR_SUCCESS) {
+        Error error = error_from_win32(attached, std::format("attach {} read-only", path.string()));
+        // Access denied here means one thing only, and it is not a broken disk:
+        // the caller has no administrator token. Saying so, with the flag that
+        // gets one, beats reporting a bare Win32 5.
+        if (attached == ERROR_ACCESS_DENIED) {
+            error.code = ErrorCode::NeedsElevation;
+            error.remedy = "attaching read-only needs an administrator token; re-run with --elevate";
+        }
+        return std::unexpected(std::move(error));
+    }
+    return std::make_unique<Win32AttachedDisk>(handle.release(), path);
 }
 
 }  // namespace wsldisk::platform

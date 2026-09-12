@@ -24,6 +24,20 @@ public:
     [[nodiscard]] Status create(const std::filesystem::path& path, std::uint64_t maximum_size) const override;
 };
 
+/// `IDiskAttach` on top of the Virtual Disk Service.
+///
+/// Separate from `Win32VirtualDisk` because it is a separate capability, not
+/// another mode: attaching needs `OPEN_VIRTUAL_DISK_VERSION_1` with
+/// `VIRTUAL_DISK_ACCESS_ATTACH_RO` and an administrator token, where the
+/// compaction path needs V2 with `VIRTUAL_DISK_ACCESS_NONE` and no token at all.
+/// Keeping them apart is what lets `IVirtualDisk::open` keep exactly one valid
+/// spelling (D10), and it is the elevated worker alone that uses this one (D11).
+class Win32DiskAttach final : public IDiskAttach {
+public:
+    [[nodiscard]] Result<std::unique_ptr<IAttachedDisk>> attach_read_only(
+        const std::filesystem::path& path) const override;
+};
+
 /// The VHDX vendor GUID, exposed so contract tests can build a storage type
 /// without duplicating the literal.
 [[nodiscard]] VIRTUAL_STORAGE_TYPE vhdx_storage_type() noexcept;

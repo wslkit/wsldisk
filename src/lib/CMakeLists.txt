@@ -70,6 +70,8 @@ add_library(wsldisk_lib STATIC
     platform/clock.h
     platform/editor.cpp
     platform/editor.h
+    platform/elevation.cpp
+    platform/elevation.h
     platform/filesystem.cpp
     platform/filesystem.h
     platform/registry.cpp
@@ -96,6 +98,9 @@ target_include_directories(wsldisk_lib
 find_package(tomlplusplus CONFIG REQUIRED)
 target_link_libraries(wsldisk_lib
     PUBLIC wsldisk::flags
-    PRIVATE virtdisk uuid tomlplusplus::tomlplusplus)
+    # advapi32: token and SID checks behind --elevate. shell32: ShellExecuteEx
+    # with "runas", the only way to ask for an administrator token. bcrypt: the
+    # 128 random bits in the result pipe's name.
+    PRIVATE virtdisk uuid advapi32 shell32 bcrypt tomlplusplus::tomlplusplus)
 
 set_target_properties(wsldisk_lib PROPERTIES FOLDER "wsldisk")

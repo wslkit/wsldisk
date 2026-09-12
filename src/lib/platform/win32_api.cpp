@@ -123,6 +123,16 @@ const Win32Api& real_win32_api() {
             [](HANDLE handle, LPOVERLAPPED overlapped, PVIRTUAL_DISK_PROGRESS progress) {
                 return ::GetVirtualDiskOperationProgress(handle, overlapped, progress);
             },
+        .attach_virtual_disk =
+            [](HANDLE handle, PSECURITY_DESCRIPTOR security_descriptor, ATTACH_VIRTUAL_DISK_FLAG flags,
+               ULONG provider_flags, PATTACH_VIRTUAL_DISK_PARAMETERS parameters, LPOVERLAPPED overlapped) {
+                return ::AttachVirtualDisk(handle, security_descriptor, flags, provider_flags, parameters,
+                                           overlapped);
+            },
+        .detach_virtual_disk =
+            [](HANDLE handle, DETACH_VIRTUAL_DISK_FLAG flags, ULONG provider_flags) {
+                return ::DetachVirtualDisk(handle, flags, provider_flags);
+            },
         .create_virtual_disk =
             [](PVIRTUAL_STORAGE_TYPE storage_type, PCWSTR path, VIRTUAL_DISK_ACCESS_MASK access_mask,
                PSECURITY_DESCRIPTOR security_descriptor, CREATE_VIRTUAL_DISK_FLAG flags, ULONG provider_flags,
@@ -180,6 +190,44 @@ const Win32Api& real_win32_api() {
             [](HANDLE handle, DWORD milliseconds) { return ::WaitForSingleObject(handle, milliseconds); },
         .cancel_io_ex = [](HANDLE handle,
                            LPOVERLAPPED overlapped) { return ::CancelIoEx(handle, overlapped); },
+        .set_event = [](HANDLE handle) { return ::SetEvent(handle); },
+        .get_process_id = [](HANDLE process) { return ::GetProcessId(process); },
+        .allocate_and_initialize_sid =
+            [](PSID_IDENTIFIER_AUTHORITY authority, BYTE sub_authority_count, DWORD sub_authority0,
+               DWORD sub_authority1, DWORD sub_authority2, DWORD sub_authority3, DWORD sub_authority4,
+               DWORD sub_authority5, DWORD sub_authority6, DWORD sub_authority7, PSID* sid) {
+                return ::AllocateAndInitializeSid(authority, sub_authority_count, sub_authority0,
+                                                  sub_authority1, sub_authority2, sub_authority3,
+                                                  sub_authority4, sub_authority5, sub_authority6,
+                                                  sub_authority7, sid);
+            },
+        .free_sid = [](PSID sid) { return ::FreeSid(sid); },
+        .check_token_membership =
+            [](HANDLE token, PSID group, PBOOL is_member) {
+                return ::CheckTokenMembership(token, group, is_member);
+            },
+        .shell_execute_ex = [](LPSHELLEXECUTEINFOW info) { return ::ShellExecuteExW(info); },
+        .create_named_pipe =
+            [](LPCWSTR name, DWORD open_mode, DWORD pipe_mode, DWORD max_instances, DWORD out_buffer_size,
+               DWORD in_buffer_size, DWORD default_timeout, LPSECURITY_ATTRIBUTES security_attributes) {
+                return ::CreateNamedPipeW(name, open_mode, pipe_mode, max_instances, out_buffer_size,
+                                          in_buffer_size, default_timeout, security_attributes);
+            },
+        .connect_named_pipe = [](HANDLE pipe,
+                                 LPOVERLAPPED overlapped) { return ::ConnectNamedPipe(pipe, overlapped); },
+        .get_named_pipe_client_process_id =
+            [](HANDLE pipe, PULONG process_id) { return ::GetNamedPipeClientProcessId(pipe, process_id); },
+        .convert_string_sd_to_sd =
+            [](LPCWSTR string_security_descriptor, DWORD revision,
+               PSECURITY_DESCRIPTOR* security_descriptor, PULONG size) {
+                return ::ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                    string_security_descriptor, revision, security_descriptor, size);
+            },
+        .local_free = [](HLOCAL memory) { return ::LocalFree(memory); },
+        .bcrypt_gen_random =
+            [](PVOID algorithm, PUCHAR buffer, ULONG size, ULONG flags) {
+                return ::BCryptGenRandom(algorithm, buffer, size, flags);
+            },
     };
     return table;
 }
