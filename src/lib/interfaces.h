@@ -98,6 +98,95 @@ public:
                                         std::uint64_t maximum_size) const = 0;
 };
 
+/// A disk attached read-only, detached again by the destructor.
+///
+/// Attaching is what "full" compaction needs: with the disk attached, the
+/// compaction consults the filesystem bitmap instead of relying on what the
+/// guest already discarded. It is worth it only for a disk that was never
+/// trimmed -- after `fstrim` the unattached path reclaims everything (D10) --
+/// and it is the one part of the job that needs an administrator token.
+class IAttachedDisk {
+public:
+    IAttachedDisk() = default;
+    IAttachedDisk(const IAttachedDisk&) = delete;
+    IAttachedDisk& operator=(const IAttachedDisk&) = delete;
+    IAttachedDisk(IAttachedDisk&&) = delete;
+    IAttachedDisk& operator=(IAttachedDisk&&) = delete;
+    /// Detaches. This runs even when the compaction failed or was cancelled:
+    /// leaving a disk attached is worse than leaving it uncompacted.
+    virtual ~IAttachedDisk() = default;
+
+    /// Compacts with the disk attached, reporting progress until it finishes.
+    /// Returning false from the callback asks it to stop at the next
+    /// opportunity, and a stopped compaction still detaches.
+    [[nodiscard]] virtual Status compact_full(const ProgressCallback& progress) = 0;
+};
+
+/// Attaches a virtual disk read-only.
+///
+/// Deliberately separate from `IVirtualDisk` rather than another mode on its
+/// `open()`. That interface hard-codes the one parameter shape that compacts
+/// unelevated, and its single valid spelling is the property worth keeping: a
+/// wrong mask fails at open rather than at the compaction, after the user has
+/// been told their disk is about to shrink. Attaching needs a different shape
+/// *and* an elevated token, so it is a different capability with its own
+/// interface, used only by the elevated worker (D11).
+class IDiskAttach {
+public:
+    IDiskAttach() = default;
+    IDiskAttach(const IDiskAttach&) = delete;
+    IDiskAttach& operator=(const IDiskAttach&) = delete;
+    IDiskAttach(IDiskAttach&&) = delete;
+    IDiskAttach& operator=(IDiskAttach&&) = delete;
+    virtual ~IDiskAttach() = default;
+
+    /// Opens and attaches read-only, with no drive letter and no local host
+    /// mount -- the disk becomes compactable, not browsable.
+    [[nodiscard]] virtual Result<std::unique_ptr<IAttachedDisk>> attach_read_only(
+        const std::filesystem::path& path) const = 0;
+};
+
+/// Where an elevated worker's output goes while it runs.
+///
+/// The worker's own console is hidden, so anything it does not report here is
+/// never seen. `progress` returning false asks it to stop -- that is the only
+/// thing that travels the other way, and it rides a separate event rather than
+/// the pipe, because a pending read on a synchronous handle blocks the write
+/// the other direction needs (measured, docs/RESEARCH.md).
+struct ElevatedSink {
+    std::function<void(std::string_view)> message;
+    ProgressCallback progress;
+};
+
+/// Whether this process holds an administrator token, and how to borrow one.
+///
+/// The split exists because most of what wsldisk does needs no elevation at all
+/// (D10). Only the attach path does, so only that runs elevated, and the user
+/// still sees one output stream and one exit code.
+class IElevation {
+public:
+    IElevation() = default;
+    IElevation(const IElevation&) = delete;
+    IElevation& operator=(const IElevation&) = delete;
+    IElevation(IElevation&&) = delete;
+    IElevation& operator=(IElevation&&) = delete;
+    virtual ~IElevation() = default;
+
+    /// Is this process already running with an administrator token?
+    [[nodiscard]] virtual bool is_elevated() const = 0;
+
+    /// Relaunches this executable elevated to run one privileged verb against
+    /// one path, streams what it reports into `sink`, and returns its exit code.
+    ///
+    /// The verb and the path are all the elevated half is told; it re-validates
+    /// the path against the registry itself and reads nothing back from the
+    /// pipe (D11). Declining the prompt is not a failure of this call in any
+    /// interesting sense -- it comes back as `ErrorCode::NeedsElevation`.
+    [[nodiscard]] virtual Result<int> run_elevated(std::string_view verb,
+                                                   const std::filesystem::path& target,
+                                                   const ElevatedSink& sink) const = 0;
+};
+
 /// What running one `wsl.exe` command produced.
 struct WslCommandResult {
     /// The process exit code. This is the only success signal that can be
