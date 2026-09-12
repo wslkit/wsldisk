@@ -434,6 +434,149 @@ Found by dogfooding: the reported failure was `compact Ubuntu` sitting through
 ten "waiting for the disk to be released" lines and then refusing, on a machine
 where `wsl --list --running` said nothing was running at all.
 
+### Elevation relaunch and result streaming (issue #6) — answered, and it changes the IPC shape
+
+**The split works, and the control channel cannot share the pipe.** An
+unelevated parent can relaunch itself with `runas`, stream progress back from the
+elevated half over a named pipe the launching user alone can open, cancel it from
+the unelevated console, and exit with the elevated half's own exit code. What the
+plan got wrong is the channel: §5.3 says "named pipe for IPC", and a *duplex*
+pipe carrying progress one way and cancellation the other deadlocks both
+processes.
+
+Measured on Windows 10 Pro 22H2 (build 19045) — a different host from the M0
+spikes above, which ran on Windows 11 26200 — with an unsigned x64 binary built
+by MSVC from `spikes/elevation/elevate.cpp`, driven by `spikes/elevation/run.ps1`.
+The account is a **split-token administrator**: `BUILTIN\Administrators` is
+present in the filtered token as "Group used for deny only". UAC policy was
+`EnableLUA=1`, `ConsentPromptBehaviorAdmin=5` (consent prompt for non-Windows
+binaries), `PromptOnSecureDesktop=1`. SIDs are redacted as
+`S-1-5-21-<redacted>-1001`. Nothing was compacted: the elevated worker sleeps and
+reports progress.
+
+#### The two halves, measured
+
+| | parent | elevated worker |
+|---|---|---|
+| `CheckTokenMembership` (Administrators) | no | yes |
+| Integrity level | `0x2000` medium | `0x3000` high |
+| Token user SID | `S-1-5-21-<redacted>-1001` | `S-1-5-21-<redacted>-1001` — same |
+| `TokenIsElevated` seen through the pipe | — | yes |
+
+The child is the same user one integrity level up, which is why a pipe whose
+DACL is `D:P(A;;GA;;;<user sid>)` — that user and nobody else, not even SYSTEM,
+with inheritance blocked — is openable by the elevated child with no weakening
+at all. Mandatory integrity control does not get in the way either: the
+restriction is no-write-**up**, and here the high-IL client is writing to a
+medium-IL object.
+
+> **Not measured, and it matters.** This holds because a split-token admin's
+> filtered and elevated tokens carry the *same* user SID. Over-the-shoulder
+> elevation — a standard user typing a different account's administrator
+> credentials — gives the worker a different SID, and this DACL would then deny
+> it. There is no second account on the test machine, so that path is untested.
+> The implementation must either grant the elevated identity explicitly or fail
+> with a clear message instead of an unexplained access denial.
+
+#### Declining the prompt (issue question 2)
+
+`ShellExecuteEx` returns `FALSE` with `GetLastError() == ERROR_CANCELLED` (1223).
+No crash, no hang, no orphaned child. Mapping that one error to
+`ErrorCode::NeedsElevation` gives the exit code 4 the issue asked for, and it is
+the only error worth special-casing at that call site.
+
+#### Cancellation (issue question 4)
+
+A real `CTRL_C_EVENT` — delivered by a second process that does
+`AttachConsole(parent_pid)` + `GenerateConsoleCtrlEvent`, not simulated — reaches
+the parent's handler, which returns `TRUE` so the default handler does not kill
+the process before the worker's exit code can be collected. The worker stops
+within one 200 ms poll, writes its result record and exits 5; the parent
+propagates 5.
+
+**The Ctrl+C does not reach the elevated child.** The worker installs its own
+console control handler and reports over the pipe if it ever fires. It never
+did — the child is launched through the AppInfo service and does not join the
+parent's console process group. So cancellation *must* be explicit; there is no
+inherited signal to rely on. That is a safety property, not a limitation: an
+elevated worker holding an attached disk should unwind deliberately, never die
+where the console happened to be.
+
+#### The deadlock that changes the design
+
+The first shape tried was the obvious one: a duplex message pipe, the worker
+writing progress from its main thread while a second thread sat in `ReadFile`
+waiting for a cancel record. Both processes hung after the *first* progress
+record, indefinitely, and only unwedged when the parent was killed — which
+released the worker's pending read and let its write complete.
+
+The cause is not the pipe but the handle. I/O on a synchronous file object is
+serialized: a pending `ReadFile` blocks any concurrent `WriteFile` on the same
+handle, whichever thread issues it. The parent had the same bug in mirror image
+— its Ctrl+C handler tried to write the cancel record while the main thread was
+parked in `ReadFile` on that handle.
+
+Three ways out; the third is what the spike settled on:
+
+| Option | Cost |
+|---|---|
+| `FILE_FLAG_OVERLAPPED` on both ends | Correct, but overlapped I/O in both halves for one bit of state |
+| A second pipe instance for control | Another name, another ACL, another connect to verify |
+| **A named event for cancellation** | One manual-reset event, same user-only DACL, `Local\` namespace; the worker polls it each tick |
+
+Cancellation is one bit and never needs a reason, so the event wins. The pipe
+becomes one-way (`PIPE_ACCESS_INBOUND`, worker → parent), which also removes any
+question of the elevated half *reading* instructions from a channel — see below.
+`Local\` is correct because elevation keeps the child in the same session.
+
+#### Name squatting and tampered arguments (issue question 3)
+
+The pipe namespace is machine-wide: any process on the box can create
+`\\.\pipe\<name>` first, and a medium-IL process can ordinarily do so. Two
+defences, both measured:
+
+| Defence | Result |
+|---|---|
+| Server creates with `FILE_FLAG_FIRST_PIPE_INSTANCE` | A squatter holding the name makes our own `CreateNamedPipe` fail with `ERROR_PIPE_BUSY` (231), so the parent aborts instead of proceeding |
+| Worker verifies the server before trusting it | Refused: server PID did not match the launcher PID it was given. It also compares the server's image path and token user SID to its own |
+
+The name is 128 bits from `BCryptGenRandom`, so winning the race means guessing
+the name, not merely being early.
+
+The deeper answer to "arguments an unprivileged process could tamper with" is to
+make the elevated half not worth tampering with. Its command line is visible to
+any same-user process, and UAC is not a security boundary against the same user
+anyway — so the rule for the implementation is:
+
+- The elevated worker implements exactly **one verb** (attach read-only, compact,
+  detach), never a re-parsed copy of the full CLI.
+- It takes the target path as an argument and **re-validates it itself**:
+  canonicalize, confirm it is the `VhdFileName` of a registered distribution in
+  the caller's own `Lxss` registry hive, refuse anything else.
+- It reads no instructions from the pipe. The pipe is output only.
+
+#### What the shape looks like
+
+```text
+parent (medium IL)                    worker (high IL, via runas)
+------------------                    ---------------------------
+CheckTokenMembership -> not admin
+128-bit random pipe name
+CreateNamedPipe INBOUND + FIRST_PIPE_INSTANCE, DACL = user only
+CreateEvent Local\...-cancel, same DACL
+ShellExecuteEx "runas" -------------> verify server pid/image/sid, else exit
+ConnectNamedPipe                 <--- I|sid|elevated|integrity
+ImpersonateNamedPipeClient       <--- P|pct|text
+  (fails with 1368 until a
+   message has been read)
+Ctrl+C -> SetEvent ---------------->  polled each tick, unwinds
+exit with the worker's code      <--- R|code|text
+```
+
+`ImpersonateNamedPipeClient` is worth calling out: it fails with
+`ERROR_CANNOT_IMPERSONATE` (1368) until data has been read from the pipe, so the
+client check belongs after the first record, not at connect time.
+
 ### Incidental
 
 `wsl.exe` prints `Failed to translate '<path>'` to stderr for every Windows PATH
@@ -443,5 +586,6 @@ consider passing `WSLENV`/a clean environment.
 
 ### Still open
 
-- Elevation relaunch and named-pipe IPC (#6) — now lower priority, since the
-  common compaction path needs no elevation at all.
+- Over-the-shoulder elevation (#6): whether the worker can be reached at all
+  when a standard user elevates with *another* account's credentials, and what
+  the pipe DACL has to say in that case. Needs a second account to measure.
