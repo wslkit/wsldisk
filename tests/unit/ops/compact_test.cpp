@@ -10,6 +10,8 @@
 #include <vector>
 
 #include "fake_clock.h"
+#include "fake_disk_attach.h"
+#include "fake_elevation.h"
 #include "fake_filesystem.h"
 #include "fake_registry.h"
 #include "fake_virtual_disk.h"
@@ -32,6 +34,8 @@ using wsldisk::ops::RunOptions;
 using wsldisk::testing::FakeClock;
 using wsldisk::testing::FakeFileSystem;
 using wsldisk::testing::FakeRegistry;
+using wsldisk::testing::FakeDiskAttach;
+using wsldisk::testing::FakeElevation;
 using wsldisk::testing::FakeVirtualDisk;
 using wsldisk::testing::FakeWslHost;
 using wsldisk::testing::RecordingSink;
@@ -843,4 +847,152 @@ TEST_CASE("a failed compaction starts nothing that was not running", "[ops][comp
         return !invocation.argv.empty() && invocation.argv.front() == "/bin/sh";
     });
     CHECK_FALSE(restarted);
+}
+
+TEST_CASE("elevate refuses when nothing wired it up", "[ops][compact][elevate]") {
+    // Compacting the ordinary way instead would report success for a path the
+    // user did not ask for, and the difference between the two is the only
+    // reason to pass the flag.
+    Machine machine;
+    CompactOperation operation{machine.disks, machine.filesystem,       machine.host,
+                               machine.clock, machine.distro("Ubuntu"), CompactOptions{.elevate = true}};
+
+    REQUIRE(operation.plan().has_value());
+    const auto report = operation.execute(machine.sink);
+
+    REQUIRE_FALSE(report.has_value());
+    CHECK(report.error().code == ErrorCode::Usage);
+    CHECK_FALSE(report.error().remedy.empty());
+}
+
+TEST_CASE("elevate attaches in place when the token is already held", "[ops][compact][elevate]") {
+    // An administrator shell needs no second prompt, and relaunching from one
+    // would ask the user to approve something they had already approved.
+    Machine machine;
+    FakeElevation elevation;
+    FakeDiskAttach attach;
+    elevation.set_elevated(true);
+    CompactOperation operation{machine.disks, machine.filesystem,       machine.host,
+                               machine.clock, machine.distro("Ubuntu"), CompactOptions{.elevate = true}};
+    operation.set_elevation(&elevation, &attach);
+
+    REQUIRE(operation.plan().has_value());
+    REQUIRE(operation.execute(machine.sink).has_value());
+
+    CHECK(elevation.requests().empty());
+    REQUIRE(attach.attached().size() == 1);
+    CHECK(attach.attached().front() == ubuntu_disk);
+}
+
+TEST_CASE("an attached disk is detached even when the compaction fails", "[ops][compact][elevate]") {
+    // A disk left attached stays attached until the machine reboots, and the
+    // distribution will not start while it is. Worse than not compacting.
+    Machine machine;
+    FakeElevation elevation;
+    FakeDiskAttach attach;
+    elevation.set_elevated(true);
+    attach.fail_compact(
+        wsldisk::Error{ErrorCode::Generic, "the compaction failed", "try again after a reboot"});
+    CompactOperation operation{machine.disks, machine.filesystem,       machine.host,
+                               machine.clock, machine.distro("Ubuntu"), CompactOptions{.elevate = true}};
+    operation.set_elevation(&elevation, &attach);
+
+    REQUIRE(operation.plan().has_value());
+    REQUIRE_FALSE(operation.execute(machine.sink).has_value());
+
+    CHECK(attach.attached() == attach.detached());
+}
+
+TEST_CASE("elevate relaunches when the token is not held", "[ops][compact][elevate]") {
+    Machine machine;
+    FakeElevation elevation;
+    FakeDiskAttach attach;
+    elevation.set_elevated(false);
+    CompactOperation operation{machine.disks, machine.filesystem,       machine.host,
+                               machine.clock, machine.distro("Ubuntu"), CompactOptions{.elevate = true}};
+    operation.set_elevation(&elevation, &attach);
+
+    REQUIRE(operation.plan().has_value());
+    REQUIRE(operation.execute(machine.sink).has_value());
+
+    // Relaunched rather than attached here, and told one verb and one path (D11).
+    REQUIRE(elevation.requests().size() == 1);
+    CHECK(elevation.requests().front().verb == "compact-full");
+    CHECK(elevation.requests().front().target == ubuntu_disk);
+    CHECK(attach.attached().empty());
+}
+
+TEST_CASE("declining the prompt is not a crash", "[ops][compact][elevate]") {
+    // The user was asked and said no. Nothing ran, nothing needs undoing, and
+    // the exit code says which of those it was.
+    Machine machine;
+    FakeElevation elevation;
+    FakeDiskAttach attach;
+    elevation.fail_relaunch(wsldisk::Error{ErrorCode::NeedsElevation, "the administrator prompt was declined",
+                                           "nothing was changed; re-run and approve it"});
+    CompactOperation operation{machine.disks, machine.filesystem,       machine.host,
+                               machine.clock, machine.distro("Ubuntu"), CompactOptions{.elevate = true}};
+    operation.set_elevation(&elevation, &attach);
+
+    REQUIRE(operation.plan().has_value());
+    const auto report = operation.execute(machine.sink);
+
+    REQUIRE_FALSE(report.has_value());
+    CHECK(report.error().code == ErrorCode::NeedsElevation);
+}
+
+TEST_CASE("a worker that exits non-zero fails the compaction", "[ops][compact][elevate]") {
+    // The worker has already explained itself over the pipe, so this carries the
+    // exit code rather than inventing a second story about what went wrong.
+    Machine machine;
+    FakeElevation elevation;
+    FakeDiskAttach attach;
+    elevation.set_exit_code(wsldisk::exit_code_for(ErrorCode::DistroBusy));
+    elevation.set_messages({"the disk is held open by another process"});
+    CompactOperation operation{machine.disks, machine.filesystem,       machine.host,
+                               machine.clock, machine.distro("Ubuntu"), CompactOptions{.elevate = true}};
+    operation.set_elevation(&elevation, &attach);
+
+    REQUIRE(operation.plan().has_value());
+    const auto report = operation.execute(machine.sink);
+
+    REQUIRE_FALSE(report.has_value());
+    CHECK(report.error().code == ErrorCode::Generic);
+    CHECK(report.error().message.find("11") != std::string::npos);
+}
+
+TEST_CASE("a cancelled worker reports partial rather than failure", "[ops][compact][elevate]") {
+    // Exit 5 means it unwound deliberately: the disk is detached and nothing was
+    // half-written. That is a different answer from "the compaction broke".
+    Machine machine;
+    FakeElevation elevation;
+    FakeDiskAttach attach;
+    elevation.set_exit_code(wsldisk::exit_code_for(ErrorCode::Partial));
+    CompactOperation operation{machine.disks, machine.filesystem,       machine.host,
+                               machine.clock, machine.distro("Ubuntu"), CompactOptions{.elevate = true}};
+    operation.set_elevation(&elevation, &attach);
+
+    REQUIRE(operation.plan().has_value());
+    const auto report = operation.execute(machine.sink);
+
+    REQUIRE_FALSE(report.has_value());
+    CHECK(report.error().code == ErrorCode::Partial);
+}
+
+TEST_CASE("the elevated worker's output reaches the user", "[ops][compact][elevate]") {
+    // Its console is hidden. A line it sends that the parent drops is a line
+    // nobody ever sees.
+    Machine machine;
+    FakeElevation elevation;
+    FakeDiskAttach attach;
+    elevation.set_messages({"attached read-only", "consulting the filesystem bitmap"});
+    CompactOperation operation{machine.disks, machine.filesystem,       machine.host,
+                               machine.clock, machine.distro("Ubuntu"), CompactOptions{.elevate = true}};
+    operation.set_elevation(&elevation, &attach);
+
+    REQUIRE(operation.plan().has_value());
+    REQUIRE(operation.execute(machine.sink).has_value());
+
+    CHECK(machine.sink.said("attached read-only"));
+    CHECK(machine.sink.said("consulting the filesystem bitmap"));
 }
