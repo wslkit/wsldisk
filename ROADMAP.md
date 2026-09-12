@@ -37,7 +37,7 @@ Goal: de-risk the unknowns, have a compiling skeleton and CI.
 - [x] Guest commands as uid 0; `wslapi.dll` found unusable unpackaged ([#3](https://github.com/wslkit/wsldisk/issues/3))
 - [x] Registry layout across WSL inbox 1.x / Store 2.x ([#4](https://github.com/wslkit/wsldisk/issues/4))
 - [x] Docker Desktop VHDX lock behaviour when Docker is "stopped" vs quit ([#5](https://github.com/wslkit/wsldisk/issues/5))
-- [~] Elevation relaunch + named-pipe result streaming — [moved to M2](https://github.com/wslkit/wsldisk/issues/6). Compaction turned out to need no elevation at all (D10), so this belongs with the attach-read-only and resize work that does
+- [~] Elevation relaunch + named-pipe result streaming — [moved to M2](https://github.com/wslkit/wsldisk/issues/6) and answered there. Compaction turned out to need no elevation at all (D10), so this belonged with the attach-read-only and resize work that does
 
 **Exit criteria: met.** CI is green across 16 required checks with the 100% coverage gate passing and no exclusions; every spike is answered in [docs/RESEARCH.md](docs/RESEARCH.md); PLAN.md §8 now separates what was measured from what is still open.
 
@@ -130,6 +130,7 @@ owner, not something CI should do on its own.
 
 - [x] `MoveOperation`: preflight (fs type, free space, running), sparse-preserving copy with progress, registry repoint, start test, rollback, source cleanup; same-volume fast path ([#106](https://github.com/wslkit/wsldisk/issues/106)). `--verify` full-hash comparison is still to come
 - [x] `wsldisk relink <distro> <path>` — the operation existed behind `orphans --relink`; promoted to a command of its own, and taught to honour `--json` ([#63](https://github.com/wslkit/wsldisk/issues/63))
+- [x] Elevation spike: `runas` relaunch, one-way pipe + cancel event, squatting defences ([#6](https://github.com/wslkit/wsldisk/issues/6)) — `spikes/elevation`, results in [docs/RESEARCH.md](docs/RESEARCH.md). A duplex pipe deadlocks, so the plan's IPC shape changed (D11); the `--elevate` code path itself is still to build
 - [ ] `GrowOperation`: `ResizeVirtualDisk` + `resize2fs`; detect partitioned disks and refuse
 - [ ] Helper-distro mechanism (tiny Alpine rootfs, on-demand import/remove) or `--via <distro>`
 - [ ] `ShrinkOperation`: fit check with margin, `e2fsck -f`, `resize2fs <size>`, `ResizeVirtualDisk` (safe flag only), compact, `e2fsck -n` verify
