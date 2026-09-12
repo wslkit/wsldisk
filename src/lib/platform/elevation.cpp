@@ -114,6 +114,87 @@ std::uint64_t to_number(std::string_view text) {
 
 }  // namespace
 
+Result<WorkerChannel> WorkerChannel::connect(const std::wstring& pipe_name,
+                                             const std::wstring& event_name, unsigned long server_pid) {
+    const HANDLE pipe = win32().create_file(pipe_name.c_str(), GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0,
+                                            nullptr);
+    if (pipe == INVALID_HANDLE_VALUE) {
+        return std::unexpected(error_from_win32(win32().get_last_error(), "connect to the result pipe"));
+    }
+
+    // Whoever serves this pipe is about to be handed what an administrator
+    // token can do. It has to be the process that launched us and nothing else:
+    // the name is unguessable, but a squatter that somehow held it first would
+    // otherwise be talking to an elevated process.
+    ULONG actual_pid = 0;
+    if (!win32().get_named_pipe_server_process_id(pipe, &actual_pid)) {
+        const DWORD failure = win32().get_last_error();
+        std::ignore = win32().close_handle(pipe);
+        return std::unexpected(error_from_win32(failure, "identify who is serving the result pipe"));
+    }
+    if (actual_pid != server_pid) {
+        std::ignore = win32().close_handle(pipe);
+        return fail(ErrorCode::Preflight, "the result pipe is served by a different process than our launcher",
+                    "nothing was changed; treat this as a security event rather than a retry");
+    }
+
+    // SYNCHRONIZE only: the worker waits on cancellation, it never signals it.
+    const HANDLE cancel = win32().open_event(SYNCHRONIZE, FALSE, event_name.c_str());
+    if (cancel == nullptr) {
+        const DWORD failure = win32().get_last_error();
+        std::ignore = win32().close_handle(pipe);
+        return std::unexpected(error_from_win32(failure, "open the cancel event"));
+    }
+
+    WorkerChannel channel;
+    channel.pipe_ = pipe;
+    channel.cancel_ = cancel;
+    return channel;
+}
+
+WorkerChannel::WorkerChannel(WorkerChannel&& other) noexcept
+    : pipe_(std::exchange(other.pipe_, nullptr)), cancel_(std::exchange(other.cancel_, nullptr)) {}
+
+WorkerChannel& WorkerChannel::operator=(WorkerChannel&& other) noexcept {
+    if (this != &other) {
+        if (pipe_ != nullptr) std::ignore = win32().close_handle(pipe_);
+        if (cancel_ != nullptr) std::ignore = win32().close_handle(cancel_);
+        pipe_ = std::exchange(other.pipe_, nullptr);
+        cancel_ = std::exchange(other.cancel_, nullptr);
+    }
+    return *this;
+}
+
+WorkerChannel::~WorkerChannel() {
+    if (pipe_ != nullptr) std::ignore = win32().close_handle(pipe_);
+    if (cancel_ != nullptr) std::ignore = win32().close_handle(cancel_);
+}
+
+void WorkerChannel::message(std::string_view text) const {
+    const std::string record = records::line(text);
+    DWORD written = 0;
+    // Fire and forget: see the class comment. A failed report is not a reason to
+    // abandon a disk that still needs detaching.
+    std::ignore = win32().write_file(pipe_, record.data(), static_cast<DWORD>(record.size()), &written,
+                                     nullptr);
+}
+
+bool WorkerChannel::progress(const DiskProgress& reported) const {
+    const std::string record = records::progress(reported.current, reported.total);
+    DWORD written = 0;
+    std::ignore = win32().write_file(pipe_, record.data(), static_cast<DWORD>(record.size()), &written,
+                                     nullptr);
+    return win32().wait_for_single_object(cancel_, 0) != WAIT_OBJECT_0;
+}
+
+void WorkerChannel::finish(int exit_code, std::string_view text) const {
+    const std::string record = records::result(exit_code, text);
+    DWORD written = 0;
+    std::ignore = win32().write_file(pipe_, record.data(), static_cast<DWORD>(record.size()), &written,
+                                     nullptr);
+    std::ignore = win32().flush_file_buffers(pipe_);
+}
+
 namespace records {
 
 std::string progress(std::uint64_t current, std::uint64_t total) {
@@ -186,11 +267,14 @@ Result<int> Win32Elevation::run_elevated(std::string_view verb, const std::files
     }
     image.resize(length);
 
-    // A verb and a path, and nothing else (D11). The worker re-validates the
-    // path against the registry rather than trusting it.
+    // A verb, a path, and how to find us (D11). The worker re-validates the path
+    // against the registry rather than trusting it, and checks that the pipe it
+    // connected to is served by this process rather than by a squatter that won
+    // the name -- the check the spike measured against a rogue server.
     const std::wstring parameters =
-        std::format(L"--elevated-worker {} --pipe {} --cancel-event {} --target \"{}\"",
-                    std::wstring(verb.begin(), verb.end()), *pipe_name, event_name, target.wstring());
+        std::format(L"--elevated-worker {} --pipe {} --cancel-event {} --server-pid {} --target \"{}\"",
+                    std::wstring(verb.begin(), verb.end()), *pipe_name, event_name,
+                    ::GetCurrentProcessId(), target.wstring());
 
     SHELLEXECUTEINFOW info{};
     info.cbSize = sizeof(info);

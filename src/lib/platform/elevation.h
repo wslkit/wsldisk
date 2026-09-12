@@ -36,6 +36,45 @@ public:
                                            const ElevatedSink& sink) const override;
 };
 
+/// Where the elevated worker reports, from inside the elevated process.
+///
+/// Its own console is hidden, so this channel is the only way anything it does
+/// reaches the user. Connecting verifies that the pipe is served by the process
+/// that launched it -- a squatter cannot both hold the name and be our parent --
+/// and every record it writes is fire-and-forget: a worker that cannot report
+/// still has a disk to detach, and failing the write is not a reason to abandon
+/// that.
+class WorkerChannel {
+public:
+    /// Connects to the parent's pipe and opens its cancel event.
+    [[nodiscard]] static Result<WorkerChannel> connect(const std::wstring& pipe_name,
+                                                       const std::wstring& event_name,
+                                                       unsigned long server_pid);
+
+    WorkerChannel(const WorkerChannel&) = delete;
+    WorkerChannel& operator=(const WorkerChannel&) = delete;
+    WorkerChannel(WorkerChannel&&) noexcept;
+    WorkerChannel& operator=(WorkerChannel&&) noexcept;
+    ~WorkerChannel();
+
+    /// A line for the user.
+    void message(std::string_view text) const;
+
+    /// Reports progress and answers whether to keep going. False means the
+    /// parent asked to stop, which a caller must honour by unwinding rather
+    /// than by exiting where it stands.
+    [[nodiscard]] bool progress(const DiskProgress& reported) const;
+
+    /// The final record. Sent once; anything after it is ignored by the parent.
+    void finish(int exit_code, std::string_view text) const;
+
+private:
+    WorkerChannel() = default;
+
+    void* pipe_ = nullptr;
+    void* cancel_ = nullptr;
+};
+
 /// The record protocol the two halves speak, exposed for the worker side and
 /// for tests. One record per pipe message, `<tag>|<fields>`:
 ///

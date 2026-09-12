@@ -336,6 +336,63 @@ void CompactOperation::set_running_before(const std::vector<std::string>& names)
     running_before_ = names;
 }
 
+void CompactOperation::set_elevation(const IElevation* elevation, const IDiskAttach* attach) noexcept {
+    elevation_ = elevation;
+    attach_ = attach;
+}
+
+Status CompactOperation::compact_disk(ProgressSink& progress) {
+    const ProgressCallback report_progress = [&progress](const DiskProgress& fraction) {
+        progress.step_progress(fraction);
+        return true;
+    };
+
+    if (!options_.elevate) {
+        auto handle = disks_->open(path_);
+        if (!handle.has_value()) return std::unexpected(handle.error());
+        if (const Status compacted = (*handle)->compact(report_progress); !compacted.has_value()) {
+            return std::unexpected(compacted.error());
+        }
+        // Closed before the file is measured: the size a still-open handle
+        // reports is not necessarily the one the volume has settled on.
+        handle->reset();
+        return {};
+    }
+
+    if (elevation_ == nullptr || attach_ == nullptr) {
+        // Refusing beats quietly compacting the other way: the user asked for
+        // the attached path and would otherwise be told it had happened.
+        return fail(ErrorCode::Usage, "--elevate is not wired up in this build",
+                    "compact without --elevate, which reclaims everything fstrim freed");
+    }
+
+    // Already elevated -- the worker case, and the case of a user who started an
+    // administrator shell. Nothing to relaunch; attach here.
+    if (elevation_->is_elevated()) {
+        auto attached = attach_->attach_read_only(path_);
+        if (!attached.has_value()) return std::unexpected(attached.error());
+        // The attachment is released by the destructor, whatever happens next.
+        return (*attached)->compact_full(report_progress);
+    }
+
+    const ElevatedSink sink{
+        .message = [&progress](std::string_view text) { progress.message(text); },
+        .progress =
+            [&progress](const DiskProgress& fraction) {
+                progress.step_progress(fraction);
+                return true;
+            },
+    };
+    const Result<int> code = elevation_->run_elevated("compact-full", path_, sink);
+    if (!code.has_value()) return std::unexpected(code.error());
+    if (*code == exit_code_success) return {};
+    // The worker has already said what went wrong through `sink.message`, so
+    // this carries the exit code rather than inventing a second explanation.
+    return fail(*code == exit_code_for(ErrorCode::Partial) ? ErrorCode::Partial : ErrorCode::Generic,
+                std::format("the elevated worker exited {} without compacting {}", *code, path_.string()),
+                "its own message above says why; nothing was left attached");
+}
+
 void CompactOperation::restart_if_asked(ProgressSink& progress) {
     // `--restart` promises the distribution comes back. It used to be kept only
     // when the compaction worked, so a run that stopped the distribution and
@@ -381,22 +438,10 @@ Result<Report> CompactOperation::execute(ProgressSink& progress) {
     const StepPlan compaction{.description = std::format("compact {}", path_.string()), .mutates = true};
     progress.step_started(index, compaction);
 
-    auto handle = disks_->open(path_);
-    if (!handle.has_value()) {
-        restart_if_asked(progress);
-        return std::unexpected(handle.error());
-    }
-    const ProgressCallback report_progress = [&progress](const DiskProgress& fraction) {
-        progress.step_progress(fraction);
-        return true;
-    };
-    if (const Status compacted = (*handle)->compact(report_progress); !compacted.has_value()) {
+    if (const Status compacted = compact_disk(progress); !compacted.has_value()) {
         restart_if_asked(progress);
         return std::unexpected(compacted.error());
     }
-    // Closed before the file is measured: the size a still-open handle reports
-    // is not necessarily the one the volume has settled on.
-    handle->reset();
 
     if (const auto size = filesystem_->file_size_on_disk(path_); size.has_value()) {
         after_ = *size;

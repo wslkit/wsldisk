@@ -154,6 +154,9 @@ struct Win32Api {
         create_named_pipe;
     std::function<BOOL(HANDLE pipe, LPOVERLAPPED overlapped)> connect_named_pipe;
     std::function<BOOL(HANDLE pipe, PULONG process_id)> get_named_pipe_client_process_id;
+    std::function<BOOL(HANDLE pipe, PULONG process_id)> get_named_pipe_server_process_id;
+    std::function<HANDLE(DWORD desired_access, BOOL inherit_handle, LPCWSTR name)> open_event;
+    std::function<BOOL(HANDLE file)> flush_file_buffers;
     std::function<BOOL(LPCWSTR string_security_descriptor, DWORD revision,
                        PSECURITY_DESCRIPTOR* security_descriptor, PULONG size)>
         convert_string_sd_to_sd;

@@ -51,6 +51,15 @@ struct CompactOptions {
 
     /// How long to give the guest's `fstrim`.
     std::chrono::milliseconds trim_timeout{std::chrono::minutes{10}};
+
+    /// Compact with the disk attached read-only, which consults the filesystem
+    /// bitmap instead of relying on what the guest already discarded.
+    ///
+    /// Off by default and worth asking for rarely: after `fstrim` the ordinary
+    /// path reclaims everything (D10), so this earns its keep only on a disk
+    /// that was never trimmed. It is also the one part of the job that needs an
+    /// administrator token, so asking for it may put a UAC prompt on screen.
+    bool elevate = false;
 };
 
 /// Reclaims the space a VHDX is holding but no longer using.
@@ -116,7 +125,19 @@ public:
     /// single target.
     void set_running_before(const std::vector<std::string>& names);
 
+    /// Supplies what `--elevate` needs: a way to ask for an administrator token
+    /// and a way to attach once one is held.
+    ///
+    /// A setter rather than a constructor parameter because the ordinary path
+    /// needs neither, and every existing caller compacts without elevating.
+    /// Left unset, `--elevate` refuses instead of silently doing the other thing.
+    void set_elevation(const IElevation* elevation, const IDiskAttach* attach) noexcept;
+
 private:
+    /// The compaction itself, by whichever route the options asked for:
+    /// unattached here, attached here if we already hold a token, or attached in
+    /// an elevated child that streams its progress back.
+    [[nodiscard]] Status compact_disk(ProgressSink& progress);
     /// The steps that only exist when there is a distribution: the trim and the
     /// stop. Split out so the distribution is a reference rather than an
     /// optional dereferenced in a dozen places.
@@ -156,6 +177,9 @@ private:
     const IFileSystem* filesystem_;
     const IWslHost* host_;
     const IClock* clock_;
+    /// Null unless `set_elevation` supplied them; only `--elevate` uses them.
+    const IElevation* elevation_ = nullptr;
+    const IDiskAttach* attach_ = nullptr;
     /// Absent when compacting a loose file.
     std::optional<model::Distro> distro_;
     std::filesystem::path path_;

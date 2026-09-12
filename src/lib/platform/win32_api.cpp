@@ -217,6 +217,13 @@ const Win32Api& real_win32_api() {
                                  LPOVERLAPPED overlapped) { return ::ConnectNamedPipe(pipe, overlapped); },
         .get_named_pipe_client_process_id =
             [](HANDLE pipe, PULONG process_id) { return ::GetNamedPipeClientProcessId(pipe, process_id); },
+        .get_named_pipe_server_process_id =
+            [](HANDLE pipe, PULONG process_id) { return ::GetNamedPipeServerProcessId(pipe, process_id); },
+        .open_event =
+            [](DWORD desired_access, BOOL inherit_handle, LPCWSTR name) {
+                return ::OpenEventW(desired_access, inherit_handle, name);
+            },
+        .flush_file_buffers = [](HANDLE file) { return ::FlushFileBuffers(file); },
         .convert_string_sd_to_sd =
             [](LPCWSTR string_security_descriptor, DWORD revision,
                PSECURITY_DESCRIPTOR* security_descriptor, PULONG size) {
