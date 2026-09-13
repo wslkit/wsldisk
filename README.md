@@ -1,5 +1,55 @@
 # wsldisk
 
+> **This project has moved. It is now `wslkit disk`, part of
+> [wslkit](https://github.com/wslkit/wslkit).**
+>
+> This repository is archived and read-only. Nothing here is maintained, and
+> issues and pull requests are closed.
+
+Everything wsldisk did, wslkit does, reimplemented in Go inside a single binary:
+
+| wsldisk | wslkit |
+|---|---|
+| `wsldisk list` | `wslkit disk list` |
+| `wsldisk info <distro>` | `wslkit disk info <distro>` |
+| `wsldisk trim <distro>` | `wslkit disk trim <distro>` |
+| `wsldisk compact [distro]` | `wslkit disk compact [distro]` |
+| `wsldisk usage <distro>` | `wslkit disk usage <distro>` |
+| `wsldisk orphans` | `wslkit disk orphans` |
+| `wsldisk relink <distro> <path>` | `wslkit disk relink <distro> <path>` |
+| `wsldisk move <distro> <dir>` | `wslkit disk move <distro> <dir>` |
+| `wsldisk config ...` | `wslkit disk config ...` |
+| `wsldisk completion <shell>` | `wslkit completion <shell>` |
+
+The flags, the exit codes and the `--json` shape are the same, so a script
+written against wsldisk keeps working once the command name changes.
+
+The port is tracked row by row, including the behaviours that each cost this
+project a bug report, in
+[docs/wsldisk-parity.md](https://github.com/wslkit/wslkit/blob/main/docs/wsldisk-parity.md).
+The reasoning, and the three places the Go version deliberately differs, are in
+[ADR 0011](https://github.com/wslkit/wslkit/blob/main/docs/decisions/0011-disk-subcommand.md).
+
+## Why it moved
+
+The wsl tools share most of their platform layer: registry reading, VHDX
+parsing, volume queries, redaction and the undo journal were all duplicated
+here. One binary means one signing identity, one release, one `--json` contract
+and one exit-code contract across every tool in the kit.
+
+## What is still here
+
+The C++ source, its history and its research notes, frozen. `docs/RESEARCH.md`
+in particular holds measurements that are cited from wslkit and are not repeated
+there: the virtual disk API parameter shapes that work unelevated, how long the
+utility VM holds a disk after a distribution stops, and why a duplex pipe
+deadlocks an elevated worker.
+
+The `feat/elevate` branch carries the attach-read-only compaction work, which
+was never wired to a flag and is not ported: wslkit does not self-elevate.
+
+## The original README
+
 > Compact, shrink, move, inspect and snapshot WSL2 virtual disks — from one native, dependency-free Windows CLI.
 
 [![ci](https://github.com/wslkit/wsldisk/actions/workflows/ci.yml/badge.svg)](https://github.com/wslkit/wsldisk/actions/workflows/ci.yml)
